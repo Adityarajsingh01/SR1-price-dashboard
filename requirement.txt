@@ -1,3 +1,26 @@
-streamlit>=1.35.0
-plotly>=5.20.0
-pandas>=2.0.0
+[12:06:11] 📦 Processed dependencies!
+
+cat: /mount/admin/install_path: No such file or directory
+
+
+
+
+2026-03-05 12:06:21.651 Uncaught app execution
+
+Traceback (most recent call last):
+
+  File "/home/adminuser/venv/lib/python3.13/site-packages/streamlit/runtime/scriptrunner/exec_code.py", line 129, in exec_func_with_error_handling
+
+    result = func()
+
+  File "/home/adminuser/venv/lib/python3.13/site-packages/streamlit/runtime/scriptrunner/script_runner.py", line 689, in code_to_exec
+
+    exec(code, module.__dict__)  # noqa: S102
+
+    ~~~~^^^^^^^^^^^^^^^^^^^^^^^
+
+  File "/mount/src/sr1-price-dashboard/sr1-dashboard.py", line 10, in <module>
+
+    import plotly.graph_objects as go
+
+ModuleNotFoundError: No module named 'plotly'
