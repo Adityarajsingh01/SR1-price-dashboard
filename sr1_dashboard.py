@@ -498,13 +498,20 @@ with tab_table:
     display_df.index.name = "Case"
     display_df = display_df.round(4)
 
-    # Style: highlight min/max per month
-    def color_cells(val):
-        return "color: #c9d1d9"
+    def highlight_minmax(s):
+        styles = []
+        for v in s:
+            if v == s.max():
+                styles.append("background-color: #1a4731; color: #81c784")
+            elif v == s.min():
+                styles.append("background-color: #4a1515; color: #e57373")
+            else:
+                styles.append("")
+        return styles
 
     st.dataframe(
         display_df.style
-        .background_gradient(cmap="RdYlGn", axis=0)
+        .apply(highlight_minmax, axis=0)
         .format("{:.4f}"),
         use_container_width=True, height=min(60 + 35*len(display_df), 700)
     )
@@ -516,9 +523,20 @@ with tab_table:
         diff_display = diff_display.round(4)
         diff_display = diff_display.drop(index=base_case_name, errors="ignore")
 
+        def highlight_diff(s):
+            styles = []
+            for v in s:
+                if v > 0:
+                    styles.append("background-color: #1a4731; color: #81c784")
+                elif v < 0:
+                    styles.append("background-color: #4a1515; color: #e57373")
+                else:
+                    styles.append("")
+            return styles
+
         st.dataframe(
             diff_display.style
-            .background_gradient(cmap="RdYlGn", axis=0)
+            .apply(highlight_diff, axis=0)
             .format("{:+.4f}"),
             use_container_width=True, height=min(60 + 35*len(diff_display), 600)
         )
