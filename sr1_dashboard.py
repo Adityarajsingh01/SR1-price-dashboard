@@ -267,13 +267,12 @@ def build_chart(results, cases, product, meeting_dates, show_mkr, title_extra=""
                                font=dict(size=11, color="#ffdd44"),
                                xanchor="center", yanchor="bottom")
     fig.update_layout(
-        title=dict(text=f"{product} Monthly Prices — {year}{title_extra}",
-                   font=dict(size=16, color="#e0e8f8")),
-        xaxis=dict(title="Contract", titlefont=dict(size=13, color="#99aabb"),
-                   tickfont=dict(size=12, color="#c9d1d9"), tickangle=-35,
+        title=f"{product} Monthly Prices — {year}{title_extra}",
+        xaxis_title="Contract",
+        yaxis_title="Price",
+        xaxis=dict(tickfont=dict(size=12, color="#c9d1d9"), tickangle=-35,
                    gridcolor="#1e2530", showgrid=True),
-        yaxis=dict(title="Price", titlefont=dict(size=13, color="#99aabb"),
-                   tickfont=dict(size=12, color="#c9d1d9"),
+        yaxis=dict(tickfont=dict(size=12, color="#c9d1d9"),
                    gridcolor="#1e2530", showgrid=True),
         legend=dict(font=dict(size=12, color="#c9d1d9"),
                     bgcolor="rgba(20,26,36,0.9)", bordercolor="#2e3a4e",
@@ -294,9 +293,9 @@ def build_spread_chart(df, title, color_fn=None, zero_line=True):
             hovertemplate=f"<b>{idx}</b><br>%{{x}}: %{{y:+.2f}} bp<extra></extra>",
         ))
     fig.update_layout(
-        title=dict(text=title, font=dict(size=15, color="#e0e8f8")),
+        title=title,
         xaxis=dict(tickfont=dict(size=11, color="#c9d1d9"), gridcolor="#1e2530", tickangle=-30),
-        yaxis=dict(title="bp", titlefont=dict(size=12), tickfont=dict(size=11, color="#c9d1d9"),
+        yaxis=dict(title="bp", tickfont=dict(size=11, color="#c9d1d9"),
                    gridcolor="#1e2530", zeroline=zero_line, zerolinecolor="#555", zerolinewidth=1.5),
         barmode="group",
         plot_bgcolor="#13171f", paper_bgcolor="#13171f",
@@ -623,7 +622,7 @@ with TAB_SPD:
                 hovertemplate="<b>%{x}</b><br>%{y:+.3f} bp<extra></extra>",
             ))
             fig_sp.update_layout(
-                title=dict(text=label, font=dict(size=14, color="#e0e8f8")),
+                title=label,
                 xaxis=dict(tickfont=dict(size=11, color="#c9d1d9"), tickangle=-35),
                 yaxis=dict(title="bp", zeroline=True, zerolinecolor="#666",
                            gridcolor="#1e2530", tickfont=dict(size=11, color="#c9d1d9")),
@@ -712,7 +711,7 @@ with TAB_IPC:
                 hovertemplate="%{x} Basis: %{y:+.2f} bp<extra></extra>",
             ))
             fig_ip.update_layout(
-                title=dict(text=f"SR1 vs ZQ — {sel_sr1} / {sel_zq}", font=dict(size=15, color="#e0e8f8")),
+                title=f"SR1 vs ZQ — {sel_sr1} / {sel_zq}",
                 xaxis=dict(tickfont=dict(size=11, color="#c9d1d9"), tickangle=-30),
                 yaxis=dict(title="Price", gridcolor="#1e2530", tickfont=dict(size=11, color="#c9d1d9")),
                 yaxis2=dict(title="Basis (bp)", overlaying="y", side="right",
