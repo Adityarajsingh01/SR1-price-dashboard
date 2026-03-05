@@ -422,17 +422,23 @@ with tab_chart:
             hovertemplate=f"<b>{name}</b><br>%{{x}}: %{{y:.4f}}<extra></extra>"
         ))
 
-    # Fed meeting vertical markers
+    # Fed meeting vertical markers (add_shape + add_annotation for broad Plotly compatibility)
     if show_markers:
-        added_label = False
         for d in meeting_dates:
             mo = MONTHS[d.month - 1]
-            fig.add_vline(
-                x=mo, line_width=1.5, line_dash="dot", line_color="rgba(255,200,60,0.6)",
-                annotation_text=d.strftime("%b %d"),
-                annotation_position="top",
-                annotation_font_size=9,
-                annotation_font_color="rgba(255,200,60,0.9)",
+            fig.add_shape(
+                type="line",
+                x0=mo, x1=mo, y0=0, y1=1,
+                xref="x", yref="paper",
+                line=dict(color="rgba(255,200,60,0.6)", width=1.5, dash="dot"),
+            )
+            fig.add_annotation(
+                x=mo, y=1.02,
+                xref="x", yref="paper",
+                text=d.strftime("%b %d"),
+                showarrow=False,
+                font=dict(size=9, color="rgba(255,200,60,0.9)"),
+                xanchor="center",
             )
 
     fig.update_layout(
