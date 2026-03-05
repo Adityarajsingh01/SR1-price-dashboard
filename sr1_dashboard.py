@@ -1,103 +1,131 @@
 """
-STIR Dashboard — SR1 (SOFR) · ZQ (EFFR) · Spreads & Flies · Inter-Product
-===========================================================================
+STIR TERMINAL — SR1 (SOFR) · ZQ (EFFR) · Spreads & Flies · Inter-Product
+Bloomberg-style dark terminal for US STIR scenario analysis
 Run:  streamlit run stir_dashboard.py
-Deps: pip install streamlit plotly pandas
+Deps: pip install streamlit plotly pandas openpyxl xlsxwriter
 """
 
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 from datetime import date, timedelta
-import calendar, json
+import calendar, json, io
 
-# ═══════════════════════════════════════════════════════════════
-# PAGE CONFIG
-# ═══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════
+# PAGE CONFIG & BLOOMBERG CSS
+# ══════════════════════════════════════════════════════
 st.set_page_config(
-    page_title="STIR Dashboard | SR1 · ZQ",
-    page_icon="📈",
+    page_title="STIR TERMINAL | SR1 · ZQ",
+    page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
-st.markdown("""
+BB = """
 <style>
-  .main .block-container { padding-top: 0.4rem; max-width: 100%; }
-  div[data-testid="metric-container"] {
-    background:#1a2332; border:1px solid #2e3a4e;
-    border-radius:8px; padding:10px 16px;
-  }
-  .stTabs [data-baseweb="tab"] { font-size:15px; font-weight:700; padding:8px 20px; }
-  .stTabs [aria-selected="true"] { color:#4fc3f7 !important; }
-  .sec { font-size:17px; font-weight:700; color:#7eb8f7; margin:10px 0 4px; }
-  .tip { background:#162616; border-left:3px solid #4caf50;
-         padding:8px 14px; border-radius:4px; font-size:13px; margin:4px 0; color:#c8e6c9; }
-  .warn{ background:#2a1a10; border-left:3px solid #ff9800;
-         padding:8px 14px; border-radius:4px; font-size:13px; margin:4px 0; color:#ffe0b2; }
-  .infobox{ background:#0d1b2a; border-left:3px solid #4fc3f7;
-            padding:8px 14px; border-radius:4px; font-size:13px; margin:4px 0; color:#b3d9f7; }
+@import url('https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap');
+html, body, [class*="css"] {
+    background-color: #0a0a0f !important;
+    color: #e8c84a !important;
+    font-family: 'Roboto Mono', 'Courier New', monospace !important;
+}
+.main .block-container { padding-top: 0.3rem; max-width: 100%; }
+[data-testid="stSidebar"] { background-color: #050508 !important; border-right: 1px solid #2a2a1a !important; }
+[data-testid="stSidebar"] * { color: #c8a820 !important; }
+[data-testid="stSidebar"] input { background:#111108 !important; color:#f0d050 !important; border:1px solid #3a3a1a !important; }
+div[data-testid="metric-container"] { background:#0d0d0a !important; border:1px solid #3a3a10 !important; border-top:2px solid #e8c84a !important; border-radius:2px !important; padding:8px 14px !important; }
+div[data-testid="metric-container"] label { color:#888850 !important; font-size:10px !important; letter-spacing:1px; text-transform:uppercase; }
+div[data-testid="metric-container"] [data-testid="stMetricValue"] { color:#f0d050 !important; font-size:22px !important; font-weight:700; }
+.stTabs [data-baseweb="tab-list"] { background:#050508 !important; border-bottom:1px solid #3a3a10 !important; gap:0 !important; }
+.stTabs [data-baseweb="tab"] { background:#050508 !important; color:#666640 !important; font-size:12px !important; font-weight:700 !important; font-family:'Roboto Mono',monospace !important; padding:8px 20px !important; border-radius:0 !important; border-right:1px solid #1a1a10 !important; letter-spacing:0.5px; }
+.stTabs [aria-selected="true"] { background:#1a1a08 !important; color:#f0d050 !important; border-top:2px solid #f0d050 !important; }
+.stButton > button { background:#111108 !important; color:#e8c84a !important; border:1px solid #3a3a10 !important; border-radius:2px !important; font-family:'Roboto Mono',monospace !important; font-size:11px !important; font-weight:700 !important; letter-spacing:0.5px !important; padding:6px 12px !important; }
+.stButton > button:hover { background:#1e1e0a !important; border-color:#e8c84a !important; }
+.stDownloadButton > button { background:#0a1a08 !important; color:#4af04a !important; border:1px solid #1a4a1a !important; border-radius:2px !important; font-family:'Roboto Mono',monospace !important; font-size:11px !important; font-weight:700 !important; }
+.stSelectbox > div > div { background:#111108 !important; color:#e8c84a !important; border:1px solid #3a3a10 !important; }
+.stNumberInput input { background:#111108 !important; color:#f0d050 !important; border:1px solid #3a3a10 !important; }
+.stTextInput input { background:#111108 !important; color:#f0d050 !important; border:1px solid #3a3a10 !important; }
+.stRadio label, .stCheckbox label { color:#c8a820 !important; font-size:12px !important; }
+details { background:#0d0d0a !important; border:1px solid #2a2a10 !important; border-radius:2px !important; }
+details summary { color:#c8a820 !important; font-size:12px !important; font-weight:700 !important; padding:6px 10px !important; }
+hr { border-color:#2a2a10 !important; }
+.tip  { background:#061206; border-left:3px solid #22cc22; padding:8px 14px; border-radius:2px; font-size:12px; margin:4px 0; color:#88ee88; font-family:monospace; }
+.warn { background:#120a06; border-left:3px solid #cc8822; padding:8px 14px; border-radius:2px; font-size:12px; margin:4px 0; color:#eebb88; font-family:monospace; }
+.ibox { background:#060c12; border-left:3px solid #4488cc; padding:8px 14px; border-radius:2px; font-size:12px; margin:4px 0; color:#88bbee; font-family:monospace; }
+.bb-hdr { font-size:13px; font-weight:700; color:#f0d050; letter-spacing:1.5px; text-transform:uppercase; border-bottom:1px solid #3a3a10; padding-bottom:4px; margin:8px 0 6px 0; font-family:'Roboto Mono',monospace; }
 </style>
-""", unsafe_allow_html=True)
+"""
+st.markdown(BB, unsafe_allow_html=True)
 
-# ═══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════
 # CONSTANTS
-# ═══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════
 MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
-
 COLORS = [
-    "#4fc3f7","#81c784","#ffb74d","#e57373","#ba68c8","#4dd0e1","#aed581",
-    "#ff8a65","#f06292","#9575cd","#26c6da","#d4e157","#ffa726","#ef5350",
-    "#ab47bc","#26a69a","#8d6e63","#78909c","#ec407a","#42a5f5","#66bb6a",
-    "#ffee58","#ff7043","#29b6f6","#80cbc4","#ce93d8","#a5d6a7","#ffcc02",
-    "#ff5252","#40c4ff","#69f0ae",
+    "#f0d050","#4af04a","#4ac8f0","#f04a4a","#c84af0","#f0884a","#4af088","#884af0",
+    "#f0c84a","#4a88f0","#f04a88","#88f04a","#4af0c8","#f08888","#88c8f0","#c8f04a",
+    "#f04ac8","#4a4af0","#f0f04a","#4af0f0","#aaaaaa","#ff8844","#44ff88","#8844ff",
+    "#ff4488","#44ffff","#ffff44","#ff4444","#44ff44","#4444ff",
 ]
-
 DEFAULT_MEETINGS = [
     date(2026,1,28), date(2026,3,18), date(2026,4,29), date(2026,6,17),
     date(2026,7,29), date(2026,9,16), date(2026,10,28), date(2026,12,9),
 ]
-
 PRESETS = {
-    "No Change (0 cuts)":              [ 0,   0,   0,   0,   0,   0,   0,   0],
-    "1 Cut -25bp (Sep)":               [ 0,   0,   0,   0,   0, -25,   0,   0],
-    "1 Cut -25bp (Dec)":               [ 0,   0,   0,   0,   0,   0,   0, -25],
-    "2 Cuts (Jun+Sep)":                [ 0,   0,   0, -25,   0, -25,   0,   0],
-    "2 Cuts (Sep+Dec)":                [ 0,   0,   0,   0,   0, -25,   0, -25],
-    "3 Cuts (Jun+Sep+Dec)":            [ 0,   0,   0, -25,   0, -25,   0, -25],
-    "4 Cuts (Mar+Jun+Sep+Dec)":        [ 0, -25,   0, -25,   0, -25,   0, -25],
-    "5 Cuts (Jan+Mar+Jun+Sep+Dec)":    [-25, -25,  0, -25,   0, -25,   0, -25],
-    "Hike +25bp (Mar)":                [ 0,  25,   0,   0,   0,   0,   0,   0],
-    "2 Hikes (Mar+Jun)":               [ 0,  25,   0,  25,   0,   0,   0,   0],
-    "Aggressive cut -50bp (Sep)":      [ 0,   0,   0,   0,   0, -50,   0,   0],
-    "Custom":                          [ 0,   0,   0,   0,   0,   0,   0,   0],
+    "No Change":                        [ 0,   0,   0,   0,   0,   0,   0,   0],
+    "1 Cut -25 (Mar)":                  [ 0, -25,   0,   0,   0,   0,   0,   0],
+    "1 Cut -25 (Jun)":                  [ 0,   0,   0, -25,   0,   0,   0,   0],
+    "1 Cut -25 (Sep)":                  [ 0,   0,   0,   0,   0, -25,   0,   0],
+    "1 Cut -25 (Dec)":                  [ 0,   0,   0,   0,   0,   0,   0, -25],
+    "2 Cuts (Jun+Sep)":                 [ 0,   0,   0, -25,   0, -25,   0,   0],
+    "2 Cuts (Sep+Dec)":                 [ 0,   0,   0,   0,   0, -25,   0, -25],
+    "3 Cuts (Jun+Sep+Dec)":             [ 0,   0,   0, -25,   0, -25,   0, -25],
+    "4 Cuts (Mar+Jun+Sep+Dec)":         [ 0, -25,   0, -25,   0, -25,   0, -25],
+    "5 Cuts (Jan+Mar+Jun+Sep+Dec)":     [-25, -25,   0, -25,   0, -25,   0, -25],
+    "Hike +25 (Mar)":                   [ 0,  25,   0,   0,   0,   0,   0,   0],
+    "2 Hikes (Mar+Jun)":                [ 0,  25,   0,  25,   0,   0,   0,   0],
+    "Aggressive -50 (Sep)":             [ 0,   0,   0,   0,   0, -50,   0,   0],
+    "Custom":                           [ 0,   0,   0,   0,   0,   0,   0,   0],
 }
 PRESET_NAMES = list(PRESETS.keys())
 
-# ═══════════════════════════════════════════════════════════════
+BB_LAYOUT = dict(
+    plot_bgcolor="#050508", paper_bgcolor="#050508",
+    font=dict(color="#c8a820", size=11, family="Roboto Mono, Courier New, monospace"),
+    xaxis=dict(gridcolor="#1a1a10", showgrid=True, zeroline=False,
+               tickfont=dict(size=11, color="#c8a820"), tickangle=-35,
+               linecolor="#3a3a10", showline=True),
+    yaxis=dict(gridcolor="#1a1a10", showgrid=True, zeroline=False,
+               tickfont=dict(size=11, color="#c8a820"),
+               linecolor="#3a3a10", showline=True),
+    legend=dict(bgcolor="rgba(5,5,8,0.95)", bordercolor="#3a3a10", borderwidth=1,
+                font=dict(size=11, color="#c8a820"), x=1.01, y=1),
+    hoverlabel=dict(bgcolor="#111108", bordercolor="#e8c84a",
+                    font=dict(size=11, color="#f0d050")),
+    hovermode="x unified",
+    margin=dict(l=65, r=230, t=55, b=80),
+)
+
+# ══════════════════════════════════════════════════════
 # PRICING ENGINE
-# ═══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════
 def get_last_biz_day(yr, mo):
     last = date(yr, mo, calendar.monthrange(yr, mo)[1])
     while last.weekday() >= 5:
         last -= timedelta(days=1)
     return last
 
-def compute_prices(base_rate, me_adj, qe_adj, ye_adj,
-                   meeting_dates, rate_changes_bps, year=2026):
+def compute_prices(base_rate, me_adj, qe_adj, ye_adj, meeting_dates, rate_changes_bps, year=2026):
     rate_path = []
     cum = base_rate
     for mtg, chg in zip(meeting_dates, rate_changes_bps):
         cum += chg / 10000.0
         rate_path.append((mtg + timedelta(days=1), cum))
-
     def rate_for_day(d):
         r = base_rate
         for eff, val in rate_path:
-            if d >= eff:
-                r = val
+            if d >= eff: r = val
         return r
-
     prices = {}
     for mo_idx in range(1, 13):
         n_days = calendar.monthrange(year, mo_idx)[1]
@@ -106,7 +134,6 @@ def compute_prices(base_rate, me_adj, qe_adj, ye_adj,
         d = last_biz
         while d.month == mo_idx:
             me_days.add(d); d += timedelta(days=1)
-
         prev_mo = mo_idx - 1 or 12
         prev_yr = year if mo_idx > 1 else year - 1
         prior_lb = get_last_biz_day(prev_yr, prev_mo)
@@ -114,11 +141,9 @@ def compute_prices(base_rate, me_adj, qe_adj, ye_adj,
         carry_in = set()
         while d2.month == mo_idx:
             carry_in.add(d2); d2 += timedelta(days=1)
-
         is_qe = mo_idx in (3,6,9,12)
         is_ye = mo_idx == 12
         total = 0.0
-
         for day_num in range(1, n_days + 1):
             d = date(year, mo_idx, day_num)
             if d in carry_in:
@@ -132,764 +157,581 @@ def compute_prices(base_rate, me_adj, qe_adj, ye_adj,
                     if is_qe: r += qe_adj
                     if is_ye: r += ye_adj
             total += r
-
         avg = total / n_days
         prices[MONTHS[mo_idx-1]] = round(100.0 - avg * 100.0, 6)
     return prices
 
-# ═══════════════════════════════════════════════════════════════
-# ANALYTICS ENGINE
-# ═══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════
+# ANALYTICS
+# SPREAD: FRONT − BACK (standard STIR convention)
+# Jun/Jul = SR1_Jun − SR1_Jul
+# Negative = cuts priced (back > front)
+# ══════════════════════════════════════════════════════
 def compute_analytics(results, cases):
-    """Returns calendar spreads (bp), flies (bp), implied rates (%) per case."""
     sp_labels  = [f"{MONTHS[i]}/{MONTHS[i+1]}" for i in range(11)]
-    fly_labels = [f"{MONTHS[i-1]}-{MONTHS[i]}-{MONTHS[i+1]}" for i in range(1,11)]
-
+    fly_labels = [f"{MONTHS[i-1]}/{MONTHS[i]}/{MONTHS[i+1]}" for i in range(1,11)]
     sp_data, fly_data, rate_data = {}, {}, {}
     for case in cases:
         nm = case["name"]
-        p  = [results[nm][m] for m in MONTHS]
-        sp_data[nm]  = [round((p[i+1]-p[i])*100, 2) for i in range(11)]
-        fly_data[nm] = [round((-p[i-1]+2*p[i]-p[i+1])*100, 2) for i in range(1,11)]
-        rate_data[nm]= [round(100-v, 4) for v in p]
-
+        if nm not in results: continue
+        p = [results[nm][m] for m in MONTHS]
+        sp_data[nm]   = [round((p[i] - p[i+1]) * 100, 3) for i in range(11)]
+        fly_data[nm]  = [round((-p[i-1] + 2*p[i] - p[i+1]) * 100, 3) for i in range(1,11)]
+        rate_data[nm] = [round(100 - v, 4) for v in p]
     return (
         pd.DataFrame(sp_data,  index=sp_labels).T,
         pd.DataFrame(fly_data, index=fly_labels).T,
         pd.DataFrame(rate_data, index=MONTHS).T,
     )
 
-# ═══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════
+# EXCEL EXPORT
+# ══════════════════════════════════════════════════════
+def build_excel(sr1_res, zq_res, sr1_cases, zq_cases, year, yr2, meeting_dates):
+    buf = io.BytesIO()
+    mtg_lbl = [f"M{i+1} {d.strftime('%b %d')}" for i, d in enumerate(meeting_dates)]
+    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+        def write_product(results, cases, product):
+            if not results or not cases: return
+            px, sp, fly, rt = [], [], [], []
+            for c in cases:
+                nm = c["name"]
+                if nm not in results: continue
+                p = results[nm]
+                pl = [p[m] for m in MONTHS]
+                px.append( {**{"Case":nm}, **{f"{product} {m}'{yr2}": p[m] for m in MONTHS}} )
+                sp.append( {**{"Case":nm}, **{f"{MONTHS[i]}/{MONTHS[i+1]}": round((pl[i]-pl[i+1])*100,3) for i in range(11)}} )
+                fly.append({**{"Case":nm}, **{f"{MONTHS[i-1]}/{MONTHS[i]}/{MONTHS[i+1]}": round((-pl[i-1]+2*pl[i]-pl[i+1])*100,3) for i in range(1,11)}})
+                rt.append( {**{"Case":nm}, **{f"{product} {m}'{yr2}": round(100-p[m],4) for m in MONTHS}} )
+            pd.DataFrame(px).set_index("Case").to_excel(writer, sheet_name=f"{product} Prices")
+            pd.DataFrame(sp).set_index("Case").to_excel(writer, sheet_name=f"{product} Spreads (bp)")
+            pd.DataFrame(fly).set_index("Case").to_excel(writer, sheet_name=f"{product} Flies (bp)")
+            pd.DataFrame(rt).set_index("Case").to_excel(writer, sheet_name=f"{product} Impl Rates")
+
+        write_product(sr1_res, sr1_cases, "SR1")
+        write_product(zq_res,  zq_cases,  "ZQ")
+
+        if sr1_res and zq_res:
+            rows = []
+            for sc in sr1_cases:
+                for zc in zq_cases:
+                    if sc["name"] in sr1_res and zc["name"] in zq_res:
+                        row = {"SR1 Case": sc["name"], "ZQ Case": zc["name"]}
+                        for m in MONTHS:
+                            row[f"Basis {m} (bp)"] = round((sr1_res[sc["name"]][m]-zq_res[zc["name"]][m])*100,3)
+                        rows.append(row)
+            if rows: pd.DataFrame(rows).to_excel(writer, sheet_name="SR1-ZQ Basis (bp)", index=False)
+
+        cfg = []
+        for c in sr1_cases:
+            row = {"Product":"SR1","Case":c["name"]}
+            for i,l in enumerate(mtg_lbl): row[l] = c["changes"][i]
+            cfg.append(row)
+        for c in zq_cases:
+            row = {"Product":"ZQ","Case":c["name"]}
+            for i,l in enumerate(mtg_lbl): row[l] = c["changes"][i]
+            cfg.append(row)
+        pd.DataFrame(cfg).to_excel(writer, sheet_name="Case Config", index=False)
+
+    buf.seek(0)
+    return buf.getvalue()
+
+# ══════════════════════════════════════════════════════
 # SESSION STATE
-# ═══════════════════════════════════════════════════════════════
-def _default_cases():
+# ══════════════════════════════════════════════════════
+def _defaults():
     return [
         {"name":"Base (No Change)", "changes":[0]*8, "color":COLORS[0]},
         {"name":"2 Cuts Jun+Sep",   "changes":[0,0,0,-25,0,-25,0,0], "color":COLORS[1]},
     ]
+for k in ["sr1_cases","zq_cases"]:
+    if k not in st.session_state: st.session_state[k] = _defaults()
+if "meeting_dates" not in st.session_state: st.session_state.meeting_dates = DEFAULT_MEETINGS[:]
 
-for key in ["sr1_cases","zq_cases"]:
-    if key not in st.session_state:
-        st.session_state[key] = _default_cases()
-if "meeting_dates" not in st.session_state:
-    st.session_state.meeting_dates = DEFAULT_MEETINGS[:]
-
-# ═══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════
 # SIDEBAR
-# ═══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════
 with st.sidebar:
-    st.markdown("## ⚙️ Global")
-    year = int(st.number_input("Year", value=2026, step=1, min_value=2020, max_value=2035))
+    st.markdown("### ◈ STIR TERMINAL")
+    year = int(st.number_input("YEAR", value=2026, step=1, min_value=2020, max_value=2035))
     yr2  = str(year)[2:]
-
-    st.markdown("### 📅 FOMC Dates")
+    st.markdown("**FOMC MEETING DATES**")
     meeting_dates = []
     for i, dfl in enumerate(st.session_state.meeting_dates):
-        meeting_dates.append(
-            st.date_input(f"Meeting {i+1}", value=dfl, key=f"mtg_{i}", label_visibility="collapsed")
-        )
-    if st.button("↺ Reset 2026 defaults"):
-        st.session_state.meeting_dates = DEFAULT_MEETINGS[:]
-        st.rerun()
-
+        meeting_dates.append(st.date_input(f"MTG {i+1}", value=dfl, key=f"mtg_{i}"))
+    if st.button("↺ RESET 2026"): st.session_state.meeting_dates = DEFAULT_MEETINGS[:]; st.rerun()
     st.markdown("---")
-    st.markdown("### 🔵 SR1 (SOFR) Params")
-    sofr_base = st.number_input("Base SOFR (%)", value=4.25, step=0.25, format="%.2f",
-                                 min_value=0.0, max_value=15.0) / 100
-    sofr_me   = st.number_input("ME adj (bp)",  value=1.0, step=0.5, format="%.1f", key="s_me") / 10000
-    sofr_qe   = st.number_input("QE adj (bp)",  value=0.0, step=0.5, format="%.1f", key="s_qe") / 10000
-    sofr_ye   = st.number_input("YE adj (bp)",  value=0.0, step=0.5, format="%.1f", key="s_ye") / 10000
-
-    st.markdown("### 🟠 ZQ (EFFR) Params")
-    effr_base = st.number_input("Base EFFR (%)", value=4.33, step=0.25, format="%.2f",
-                                 min_value=0.0, max_value=15.0) / 100
-    effr_me   = st.number_input("ME adj (bp)",  value=0.0, step=0.5, format="%.1f", key="e_me") / 10000
-    effr_qe   = st.number_input("QE adj (bp)",  value=0.0, step=0.5, format="%.1f", key="e_qe") / 10000
-    effr_ye   = st.number_input("YE adj (bp)",  value=8.0, step=0.5, format="%.1f", key="e_ye",
-                                 help="EFFR jumps ~8bp at year-end (window dressing)") / 10000
-
+    st.markdown("**● SR1 (SOFR)**")
+    sofr_base = st.number_input("Base SOFR %", value=4.25, step=0.25, format="%.2f", min_value=0.0, max_value=15.0, key="sb") / 100
+    sofr_me   = st.number_input("ME adj bp",   value=1.0,  step=0.5,  format="%.1f", key="sm") / 10000
+    sofr_qe   = st.number_input("QE adj bp",   value=0.0,  step=0.5,  format="%.1f", key="sq") / 10000
+    sofr_ye   = st.number_input("YE adj bp",   value=0.0,  step=0.5,  format="%.1f", key="sy") / 10000
+    st.markdown("**● ZQ (EFFR)**")
+    effr_base = st.number_input("Base EFFR %", value=4.33, step=0.25, format="%.2f", min_value=0.0, max_value=15.0, key="eb") / 100
+    effr_me   = st.number_input("ME adj bp",   value=0.0,  step=0.5,  format="%.1f", key="em") / 10000
+    effr_qe   = st.number_input("QE adj bp",   value=0.0,  step=0.5,  format="%.1f", key="eq") / 10000
+    effr_ye   = st.number_input("YE adj bp",   value=8.0,  step=0.5,  format="%.1f", key="ey") / 10000
     st.markdown("---")
-    show_mkr = st.checkbox("Show FOMC meeting markers", value=True)
-    show_diff= st.checkbox("Show Δ vs Base", value=True)
+    show_mkr  = st.checkbox("FOMC MARKERS",   value=True)
+    show_diff = st.checkbox("SHOW Δ VS BASE", value=True)
 
 mtg_labels = [f"M{i+1} {d.strftime('%b %d')}" for i, d in enumerate(meeting_dates)]
 
-# ═══════════════════════════════════════════════════════════════
-# HELPERS
-# ═══════════════════════════════════════════════════════════════
-def contract_label(product, mo):
-    return f"{product} {mo}'{yr2}"
+# ══════════════════════════════════════════════════════
+# STYLING HELPERS
+# ══════════════════════════════════════════════════════
+def hl_price(s):
+    return ["background:#0a2a0a;color:#4af04a;font-weight:bold" if v==s.max()
+            else "background:#2a0a0a;color:#f04a4a;font-weight:bold" if v==s.min()
+            else "color:#c8a820" for v in s]
 
-def highlight_mm(s):
-    out = []
-    for v in s:
-        if v == s.max():   out.append("background-color:#1a4731;color:#81c784")
-        elif v == s.min(): out.append("background-color:#4a1515;color:#e57373")
-        else:              out.append("")
-    return out
+def hl_spread(s):
+    return ["background:#2a0a0a;color:#f04a4a;font-weight:bold" if v < -0.5
+            else "background:#0a2a0a;color:#4af04a;font-weight:bold" if v > 0.5
+            else "color:#888860" for v in s]
 
-def highlight_diff(s):
-    out = []
-    for v in s:
-        if v > 0:   out.append("background-color:#1a4731;color:#81c784")
-        elif v < 0: out.append("background-color:#4a1515;color:#e57373")
-        else:       out.append("")
-    return out
+def hl_fly(s):
+    return ["background:#0a1a2a;color:#4ac8f0;font-weight:bold" if v > 0.5
+            else "background:#1a1a0a;color:#f0c84a;font-weight:bold" if v < -0.5
+            else "color:#888860" for v in s]
 
-def highlight_fly(s):
-    out = []
-    for v in s:
-        if v > 0.5:    out.append("background-color:#1a3050;color:#4fc3f7")
-        elif v < -0.5: out.append("background-color:#3a2010;color:#ffb74d")
-        else:          out.append("")
-    return out
+def hl_rate(s):
+    return ["background:#2a0a0a;color:#f04a4a;font-weight:bold" if v==s.max()
+            else "background:#0a2a0a;color:#4af04a;font-weight:bold" if v==s.min()
+            else "color:#c8a820" for v in s]
 
-def build_chart(results, cases, product, meeting_dates, show_mkr, title_extra=""):
+# ══════════════════════════════════════════════════════
+# CHART HELPERS
+# ══════════════════════════════════════════════════════
+def clbl(product, mo): return f"{product} {mo}'{yr2}"
+
+def build_price_chart(results, cases, product, meeting_dates, show_mkr, sub=""):
     fig = go.Figure()
-    xlabels = [contract_label(product, m) for m in MONTHS]
+    xlabels = [clbl(product, m) for m in MONTHS]
     for case in cases:
         nm = case["name"]
-        y  = [results[nm][m] for m in MONTHS]
+        if nm not in results: continue
         fig.add_trace(go.Scatter(
-            x=xlabels, y=y, mode="lines+markers", name=nm,
-            line=dict(color=case["color"], width=2.5),
-            marker=dict(size=7),
+            x=xlabels, y=[results[nm][m] for m in MONTHS],
+            mode="lines+markers", name=nm,
+            line=dict(color=case["color"], width=2),
+            marker=dict(size=6),
             hovertemplate=f"<b>{nm}</b><br>%{{x}}: %{{y:.4f}}<extra></extra>",
         ))
     if show_mkr:
         for d in meeting_dates:
-            xl = contract_label(product, MONTHS[d.month-1])
+            xl = clbl(product, MONTHS[d.month-1])
             fig.add_shape(type="line", x0=xl, x1=xl, y0=0, y1=1,
                           xref="x", yref="paper",
-                          line=dict(color="rgba(255,210,60,0.5)", width=1.5, dash="dot"))
-            fig.add_annotation(x=xl, y=1.05, xref="x", yref="paper",
+                          line=dict(color="rgba(240,208,80,0.4)", width=1, dash="dot"))
+            fig.add_annotation(x=xl, y=1.04, xref="x", yref="paper",
                                text=d.strftime("%b %d"), showarrow=False,
-                               font=dict(size=11, color="#ffdd44"),
-                               xanchor="center", yanchor="bottom")
-    fig.update_layout(
-        title=f"{product} Monthly Prices — {year}{title_extra}",
-        xaxis_title="Contract",
-        yaxis_title="Price",
-        xaxis=dict(tickfont=dict(size=12, color="#c9d1d9"), tickangle=-35,
-                   gridcolor="#1e2530", showgrid=True),
-        yaxis=dict(tickfont=dict(size=12, color="#c9d1d9"),
-                   gridcolor="#1e2530", showgrid=True),
-        legend=dict(font=dict(size=12, color="#c9d1d9"),
-                    bgcolor="rgba(20,26,36,0.9)", bordercolor="#2e3a4e",
-                    borderwidth=1, x=1.01, y=1),
-        plot_bgcolor="#13171f", paper_bgcolor="#13171f",
-        font=dict(color="#c9d1d9", size=12),
-        hovermode="x unified", height=460,
-        margin=dict(l=65, r=240, t=80, b=90),
-    )
+                               font=dict(size=10, color="#f0d050"), xanchor="center", yanchor="bottom")
+    layout = {**BB_LAYOUT, "title": f"{product} PRICE CURVE — {year}{sub}",
+              "xaxis_title": "CONTRACT", "yaxis_title": "PRICE", "height": 400}
+    fig.update_layout(**layout)
     return fig
 
-def build_spread_chart(df, title, color_fn=None, zero_line=True):
+def build_bar_chart(df, title, unit="bp"):
     fig = go.Figure()
     for i, (idx, row) in enumerate(df.iterrows()):
         fig.add_trace(go.Bar(
             name=idx, x=list(row.index), y=list(row.values),
             marker_color=COLORS[i % len(COLORS)],
-            hovertemplate=f"<b>{idx}</b><br>%{{x}}: %{{y:+.2f}} bp<extra></extra>",
+            hovertemplate=f"<b>{idx}</b><br>%{{x}}: %{{y:+.3f}} {unit}<extra></extra>",
         ))
-    fig.update_layout(
-        title=title,
-        xaxis=dict(tickfont=dict(size=11, color="#c9d1d9"), gridcolor="#1e2530", tickangle=-30),
-        yaxis=dict(title="bp", tickfont=dict(size=11, color="#c9d1d9"),
-                   gridcolor="#1e2530", zeroline=zero_line, zerolinecolor="#555", zerolinewidth=1.5),
-        barmode="group",
-        plot_bgcolor="#13171f", paper_bgcolor="#13171f",
-        font=dict(color="#c9d1d9"), height=400,
-        legend=dict(font=dict(size=11), bgcolor="rgba(20,26,36,0.9)"),
-        margin=dict(l=60, r=20, t=55, b=80),
-    )
+    layout = {**BB_LAYOUT, "title": title, "yaxis_title": unit, "barmode": "group",
+              "height": 360, "margin": dict(l=60, r=20, t=50, b=80)}
+    fig.update_layout(**layout)
+    fig.update_yaxes(zeroline=True, zerolinecolor="#555530", zerolinewidth=1.5)
     return fig
 
-# ═══════════════════════════════════════════════════════════════
-# CASE EDITOR (reusable)
-# ═══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════
+# CASE EDITOR
+# ══════════════════════════════════════════════════════
 def case_manager(pk):
     cases = st.session_state[f"{pk}_cases"]
     c1, c2, c3, c4 = st.columns([1,1,1,1])
     with c1:
-        if st.button("➕ Add Case", key=f"add_{pk}", use_container_width=True):
+        if st.button("+ ADD CASE", key=f"add_{pk}", use_container_width=True):
             n = len(cases)
-            if n < 30:
-                cases.append({"name":f"Case {n+1}","changes":[0]*8,"color":COLORS[n%len(COLORS)]})
+            if n < 30: cases.append({"name":f"Case {n+1}","changes":[0]*8,"color":COLORS[n%len(COLORS)]})
             st.rerun()
     with c2:
-        if st.button("🗑 Clear All", key=f"clr_{pk}", use_container_width=True):
-            st.session_state[f"{pk}_cases"] = []
-            st.rerun()
+        if st.button("X CLEAR ALL", key=f"clr_{pk}", use_container_width=True):
+            st.session_state[f"{pk}_cases"] = []; st.rerun()
     with c3:
         exp = json.dumps([{"name":c["name"],"changes":c["changes"]} for c in cases], indent=2)
-        st.download_button("⬇ Export JSON", data=exp, file_name=f"{pk}_cases.json",
+        st.download_button("DL JSON", data=exp, file_name=f"{pk}_cases.json",
                            mime="application/json", use_container_width=True, key=f"exp_{pk}")
     with c4:
-        up = st.file_uploader("⬆ Import", type="json", key=f"up_{pk}", label_visibility="collapsed")
+        up = st.file_uploader("IMPORT JSON", type="json", key=f"up_{pk}", label_visibility="collapsed")
         if up:
             imp = json.load(up)
             for i, c in enumerate(imp[:30]): c["color"] = COLORS[i%len(COLORS)]
-            st.session_state[f"{pk}_cases"] = imp
-            st.rerun()
-
+            st.session_state[f"{pk}_cases"] = imp; st.rerun()
     to_del = []
-    rows = [cases[i:i+3] for i in range(0,len(cases),3)]
-    for ri, row in enumerate(rows):
+    for ri, row_g in enumerate([cases[i:i+3] for i in range(0,len(cases),3)]):
         cols = st.columns(3)
-        for ci, case in enumerate(row):
-            gi = ri*3 + ci
+        for ci, case in enumerate(row_g):
+            gi = ri*3+ci
             with cols[ci]:
-                with st.expander(f"**{case['name']}**", expanded=False):
+                with st.expander(f"▶ {case['name']}", expanded=False):
                     a, b = st.columns([3,1])
                     with a:
-                        nn = st.text_input("Name", value=case["name"],
-                                           key=f"nm_{pk}_{gi}", label_visibility="collapsed")
+                        nn = st.text_input("NAME", value=case["name"], key=f"nm_{pk}_{gi}", label_visibility="collapsed")
                         cases[gi]["name"] = nn
                     with b:
-                        nc = st.color_picker("", value=case["color"],
-                                             key=f"cl_{pk}_{gi}", label_visibility="collapsed")
+                        nc = st.color_picker("", value=case["color"], key=f"cl_{pk}_{gi}", label_visibility="collapsed")
                         cases[gi]["color"] = nc
-                    sel = st.selectbox("Preset", PRESET_NAMES,
-                                       index=len(PRESET_NAMES)-1, key=f"ps_{pk}_{gi}")
+                    sel = st.selectbox("PRESET", PRESET_NAMES, index=len(PRESET_NAMES)-1, key=f"ps_{pk}_{gi}")
                     base_chg = PRESETS[sel] if sel != "Custom" else case["changes"]
                     new_ch = []
                     for mi, lbl in enumerate(mtg_labels):
-                        v = st.number_input(lbl, value=float(base_chg[mi] if sel!="Custom"
-                                            else case["changes"][mi]),
+                        v = st.number_input(lbl, value=float(base_chg[mi] if sel!="Custom" else case["changes"][mi]),
                                             step=25.0, format="%.0f", key=f"ch_{pk}_{gi}_{mi}")
                         new_ch.append(v)
                     cases[gi]["changes"] = new_ch
-                    if st.button("🗑 Remove", key=f"del_{pk}_{gi}", use_container_width=True):
-                        to_del.append(gi)
-    for i in sorted(to_del, reverse=True):
-        cases.pop(i)
+                    if st.button("X REMOVE", key=f"del_{pk}_{gi}", use_container_width=True): to_del.append(gi)
+    for i in sorted(to_del, reverse=True): cases.pop(i)
     if to_del: st.rerun()
 
-# ═══════════════════════════════════════════════════════════════
-# MAIN TABS
-# ═══════════════════════════════════════════════════════════════
-st.markdown("# 📈 STIR Dashboard — SR1 · ZQ · Spreads · Inter-Product")
-
-TAB_SR1, TAB_ZQ, TAB_SPD, TAB_IPC, TAB_GUIDE = st.tabs([
-    "🔵 SR1 (SOFR)", "🟠 ZQ (EFFR)", "📐 Spreads & Flies", "🔀 Inter-Product", "📚 Trading Guide"
-])
-
-# ───────────────────────────────────────────────────────────────
-# COMPUTE RESULTS
-# ───────────────────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════
+# COMPUTE
+# ══════════════════════════════════════════════════════
 def compute_all(pk, base_rate, me, qe, ye):
     res = {}
     for c in st.session_state[f"{pk}_cases"]:
-        res[c["name"]] = compute_prices(base_rate, me, qe, ye,
-                                         meeting_dates, c["changes"], year)
+        res[c["name"]] = compute_prices(base_rate, me, qe, ye, meeting_dates, c["changes"], year)
     return res
 
 sr1_res = compute_all("sr1", sofr_base, sofr_me, sofr_qe, sofr_ye)
 zq_res  = compute_all("zq",  effr_base, effr_me, effr_qe, effr_ye)
 
-# ═══════════════════════════════════════════════════════════════
-# TAB 1: SR1 (SOFR)
-# ═══════════════════════════════════════════════════════════════
-with TAB_SR1:
-    st.markdown(f'<div class="sec">🔵 SR1 (1-Month SOFR Futures) — Base SOFR: {sofr_base*100:.2f}%</div>',
-                unsafe_allow_html=True)
-    case_manager("sr1")
-    st.markdown("---")
+# ══════════════════════════════════════════════════════
+# HEADER + GLOBAL EXPORT
+# ══════════════════════════════════════════════════════
+h1, h2, h3 = st.columns([4,2,1])
+with h1:
+    st.markdown(f"<span style='font-size:20px;font-weight:700;color:#f0d050;font-family:Roboto Mono,monospace;'>◈ STIR TERMINAL &nbsp;|&nbsp; SR1·ZQ·SPREADS·FLIES &nbsp;|&nbsp; {year}</span>", unsafe_allow_html=True)
+with h2:
+    st.markdown(f"<span style='color:#888860;font-size:11px;font-family:Roboto Mono,monospace;'>SOFR {sofr_base*100:.2f}% &nbsp;|&nbsp; EFFR {effr_base*100:.2f}%</span>", unsafe_allow_html=True)
+with h3:
+    if sr1_res or zq_res:
+        xl = build_excel(sr1_res, zq_res, st.session_state.sr1_cases, st.session_state.zq_cases, year, yr2, meeting_dates)
+        st.download_button("⬇ EXPORT ALL → XLSX", data=xl, file_name=f"STIR_{year}.xlsx",
+                           mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                           use_container_width=True)
+st.markdown("<hr style='margin:4px 0;'>", unsafe_allow_html=True)
 
-    if not sr1_res:
-        st.warning("Add at least one case.")
-        st.stop()
-
-    cases_sr1 = st.session_state.sr1_cases
-
-    # Metrics
-    base_name = cases_sr1[0]["name"] if cases_sr1 else ""
-    base_p = sr1_res.get(base_name, {})
+# ══════════════════════════════════════════════════════
+# SHARED RENDERER
+# ══════════════════════════════════════════════════════
+def render_product(pk, product, base_rate, results):
+    cases = st.session_state[f"{pk}_cases"]
+    st.markdown(f"<div class='bb-hdr'>◈ {product} — BASE: {base_rate*100:.2f}% | {len(cases)} CASES</div>", unsafe_allow_html=True)
+    case_manager(pk)
+    st.markdown("<hr style='margin:4px 0;'>", unsafe_allow_html=True)
+    if not results:
+        st.warning("ADD AT LEAST ONE CASE.")
+        return
+    base_name = cases[0]["name"] if cases else ""
+    base_p = results.get(base_name, {})
     m1,m2,m3,m4,m5 = st.columns(5)
-    m1.metric("Base SOFR", f"{sofr_base*100:.2f}%")
-    m2.metric(f"SR1 Jan'{yr2} (Base)", f"{base_p.get('Jan',0):.4f}")
-    m3.metric(f"SR1 Dec'{yr2} (Base)", f"{base_p.get('Dec',0):.4f}")
-    m4.metric("Active Cases", len(cases_sr1))
-    if len(sr1_res) > 1:
-        decs = [sr1_res[c["name"]]["Dec"] for c in cases_sr1]
-        m5.metric("Dec Price Range", f"{(max(decs)-min(decs))*100:.2f} bp")
-    st.markdown("---")
+    m1.metric("BASE RATE",           f"{base_rate*100:.2f}%")
+    m2.metric(f"{product} JAN '{yr2}", f"{base_p.get('Jan',0):.4f}")
+    m3.metric(f"{product} DEC '{yr2}", f"{base_p.get('Dec',0):.4f}")
+    m4.metric("ACTIVE CASES",         str(len(cases)))
+    if len(results) > 1:
+        decs = [results[c["name"]]["Dec"] for c in cases if c["name"] in results]
+        m5.metric("DEC RANGE (bp)", f"{(max(decs)-min(decs))*100:.2f}")
+    st.markdown("<hr style='margin:2px 0;'>", unsafe_allow_html=True)
 
-    t1a, t1b, t1c, t1d = st.tabs(["📈 Price Chart", "📊 Calendar Spreads", "🦋 Butterflies", "🗂 Table"])
+    t_chart, t_sp, t_fly, t_tbl = st.tabs(["PRICE CHART","CALENDAR SPREADS","BUTTERFLIES","FULL TABLE"])
+    sp_df, fly_df, rate_df = compute_analytics(results, cases)
 
-    with t1a:
-        st.plotly_chart(
-            build_chart(sr1_res, cases_sr1, "SR1", meeting_dates, show_mkr,
-                        f" (SOFR {sofr_base*100:.2f}%)"),
-            use_container_width=True
-        )
+    # ── Price Table helper ──
+    def make_price_table():
+        pt = pd.DataFrame(
+            {c["name"]: [results[c["name"]][m] for m in MONTHS]
+             for c in cases if c["name"] in results}, index=MONTHS
+        ).T
+        pt.columns = [clbl(product, m) for m in MONTHS]
+        pt.index.name = "CASE"
+        return pt
 
-        if show_diff and len(sr1_res) > 1:
-            st.markdown(f"**Δ vs '{base_name}' (bp)**")
-            ddf = pd.DataFrame({c["name"]: [sr1_res[c["name"]][m] for m in MONTHS]
-                                 for c in cases_sr1}, index=MONTHS).T
-            diff = (ddf.subtract(ddf.loc[base_name]) * 100).drop(index=base_name, errors="ignore").round(2)
-            diff.columns = [contract_label("SR1", m) for m in MONTHS]
+    with t_chart:
+        st.plotly_chart(build_price_chart(results, cases, product, meeting_dates, show_mkr,
+                        f" | SOFR {sofr_base*100:.2f}%" if pk=="sr1" else f" | EFFR {effr_base*100:.2f}%"),
+                        use_container_width=True)
+        st.markdown("<div class='bb-hdr'>CONTRACT PRICES — ALL CASES</div>", unsafe_allow_html=True)
+        pt = make_price_table()
+        st.dataframe(pt.style.apply(hl_price, axis=0).format("{:.4f}"),
+                     use_container_width=True, height=min(80+35*len(pt), 500))
+        if show_diff and len(results) > 1 and base_name in pt.index:
+            st.markdown(f"<div class='bb-hdr'>Δ VS '{base_name}' (bp)</div>", unsafe_allow_html=True)
+            diff = (pt.subtract(pt.loc[base_name]) * 100).drop(index=base_name, errors="ignore").round(2)
             if not diff.empty:
-                st.dataframe(diff.style.apply(highlight_diff, axis=1).format("{:+.2f}"),
-                             use_container_width=True)
+                st.dataframe(diff.style.apply(hl_spread, axis=1).format("{:+.2f}"),
+                             use_container_width=True, height=min(80+35*len(diff), 400))
 
-    with t1b:
-        sp_df, fly_df, rate_df = compute_analytics(sr1_res, cases_sr1)
-        sp_df.columns = [f"SR1 {c}" for c in sp_df.columns]
-        st.plotly_chart(build_spread_chart(sp_df, "SR1 Calendar Spreads (bp) — back minus front"),
+    with t_sp:
+        sp_disp = sp_df.copy()
+        sp_disp.columns = [f"{product} {c}" for c in sp_disp.columns]
+        st.plotly_chart(build_bar_chart(sp_disp, f"{product} CALENDAR SPREADS (FRONT − BACK, bp)"),
                         use_container_width=True)
-        st.markdown("**Spread table (bp)** — positive = rates falling, negative = rates rising")
-        st.dataframe(sp_df.style.apply(highlight_diff, axis=1).format("{:+.2f}"),
-                     use_container_width=True)
-        st.markdown("""
-        <div class="infobox">
-        <b>Reading spreads:</b> SR1 Feb/Mar spread = SR1 Mar price − SR1 Feb price.<br>
-        <b>Positive</b> = market pricing a rate cut between those two months (Mar price higher = lower Mar rate).<br>
-        <b>Negative</b> = market pricing a rate hike.<br>
-        A spread that's <b>too steep vs your view</b> → sell it. <b>Too flat</b> → buy it.
+        st.markdown("<div class='bb-hdr'>SPREAD TABLE (bp) — FRONT MINUS BACK</div>", unsafe_allow_html=True)
+        st.markdown("""<div class='ibox'>
+        CONVENTION: Front − Back &nbsp;|&nbsp;
+        <span style='color:#f04a4a'>NEGATIVE = STEEPENING = CUTS PRICED</span> &nbsp;|&nbsp;
+        <span style='color:#4af04a'>POSITIVE = FLAT / HIKES PRICED</span><br>
+        Jun/Jul = SR1_Jun − SR1_Jul. If −25bp: one full 25bp cut priced between those months.
+        Prob(cut) = |spread| / 25bp
         </div>""", unsafe_allow_html=True)
-
-    with t1c:
-        _, fly_df, _ = compute_analytics(sr1_res, cases_sr1)
-        fly_df.columns = [f"{c}" for c in fly_df.columns]
-        st.plotly_chart(build_spread_chart(fly_df, "SR1 Butterfly Values (bp)"),
-                        use_container_width=True)
-        st.markdown("**Fly table (bp)** — Fly = −Front + 2×Belly − Back")
-        st.dataframe(fly_df.style.apply(highlight_fly, axis=1).format("{:+.2f}"),
+        st.dataframe(sp_disp.style.apply(hl_spread, axis=1).format("{:+.3f}"),
                      use_container_width=True)
-        st.markdown("""
-        <div class="infobox">
-        <b>+ve fly:</b> Belly is priced higher than wings → belly cheap (more cuts in belly period).<br>
-        <b>−ve fly:</b> Belly priced lower than wings → sell the belly fly.<br>
-        Trade: if you expect cuts to be concentrated in a specific meeting window,
-        buy the fly centred on that meeting month.
+
+    with t_fly:
+        st.plotly_chart(build_bar_chart(fly_df, f"{product} BUTTERFLIES (−F + 2×B − K, bp)"),
+                        use_container_width=True)
+        st.markdown("<div class='bb-hdr'>FLY TABLE (bp)</div>", unsafe_allow_html=True)
+        st.markdown("""<div class='ibox'>
+        FLY = −Front + 2×Belly − Back &nbsp;|&nbsp;
+        <span style='color:#4ac8f0'>POSITIVE: belly rich vs wings → SELL THE FLY</span> &nbsp;|&nbsp;
+        <span style='color:#f0c84a'>NEGATIVE: belly cheap vs wings → BUY THE FLY</span><br>
+        Best expression: fly centred on the meeting month where your view differs most from market.
         </div>""", unsafe_allow_html=True)
-
-    with t1d:
-        price_tbl = pd.DataFrame({c["name"]: [sr1_res[c["name"]][m] for m in MONTHS]
-                                   for c in cases_sr1}, index=MONTHS).T
-        price_tbl.columns = [contract_label("SR1", m) for m in MONTHS]
-        price_tbl.index.name = "Case"
-        st.markdown("**SR1 Prices**")
-        st.dataframe(price_tbl.style.apply(highlight_mm).format("{:.4f}"),
-                     use_container_width=True, height=min(100+35*len(price_tbl), 700))
-        csv = price_tbl.to_csv()
-        st.download_button("⬇ Download CSV", csv, f"sr1_prices_{year}.csv", "text/csv")
-
-        _, _, rate_df = compute_analytics(sr1_res, cases_sr1)
-        rate_df.columns = [contract_label("SR1", m) for m in MONTHS]
-        rate_df.index.name = "Case"
-        st.markdown("**Implied SOFR rates (%)**")
-        st.dataframe(rate_df.style.apply(lambda s: [
-            "background-color:#4a1515;color:#e57373" if v==s.max() else
-            "background-color:#1a4731;color:#81c784" if v==s.min() else ""
-            for v in s], axis=1).format("{:.4f}"), use_container_width=True,
-            height=min(100+35*len(rate_df), 600))
-
-# ═══════════════════════════════════════════════════════════════
-# TAB 2: ZQ (EFFR)
-# ═══════════════════════════════════════════════════════════════
-with TAB_ZQ:
-    st.markdown(f'<div class="sec">🟠 ZQ (30-Day Fed Funds Futures) — Base EFFR: {effr_base*100:.2f}%</div>',
-                unsafe_allow_html=True)
-    case_manager("zq")
-    st.markdown("---")
-
-    if not zq_res:
-        st.warning("Add at least one case.")
-        st.stop()
-
-    cases_zq = st.session_state.zq_cases
-    base_zq = cases_zq[0]["name"] if cases_zq else ""
-    base_zq_p = zq_res.get(base_zq, {})
-
-    m1,m2,m3,m4,m5 = st.columns(5)
-    m1.metric("Base EFFR", f"{effr_base*100:.2f}%")
-    m2.metric(f"ZQ Jan'{yr2} (Base)", f"{base_zq_p.get('Jan',0):.4f}")
-    m3.metric(f"ZQ Dec'{yr2} (Base)", f"{base_zq_p.get('Dec',0):.4f}")
-    m4.metric("Active Cases", len(cases_zq))
-    if len(zq_res) > 1:
-        decs = [zq_res[c["name"]]["Dec"] for c in cases_zq]
-        m5.metric("Dec Price Range", f"{(max(decs)-min(decs))*100:.2f} bp")
-    st.markdown("---")
-
-    t2a, t2b, t2c, t2d = st.tabs(["📈 Price Chart", "📊 Calendar Spreads", "🦋 Butterflies", "🗂 Table"])
-
-    with t2a:
-        st.plotly_chart(
-            build_chart(zq_res, cases_zq, "ZQ", meeting_dates, show_mkr,
-                        f" (EFFR {effr_base*100:.2f}%)"),
-            use_container_width=True
-        )
-
-    with t2b:
-        sp_df, _, _ = compute_analytics(zq_res, cases_zq)
-        sp_df.columns = [f"ZQ {c}" for c in sp_df.columns]
-        st.plotly_chart(build_spread_chart(sp_df, "ZQ Calendar Spreads (bp)"),
-                        use_container_width=True)
-        st.dataframe(sp_df.style.apply(highlight_diff, axis=1).format("{:+.2f}"),
+        st.dataframe(fly_df.style.apply(hl_fly, axis=1).format("{:+.3f}"),
                      use_container_width=True)
 
-    with t2c:
-        _, fly_df, _ = compute_analytics(zq_res, cases_zq)
-        st.plotly_chart(build_spread_chart(fly_df, "ZQ Butterfly Values (bp)"),
-                        use_container_width=True)
-        st.dataframe(fly_df.style.apply(highlight_fly, axis=1).format("{:+.2f}"),
-                     use_container_width=True)
+    with t_tbl:
+        pt2 = make_price_table()
+        st.markdown("<div class='bb-hdr'>PRICES</div>", unsafe_allow_html=True)
+        st.dataframe(pt2.style.apply(hl_price, axis=0).format("{:.4f}"),
+                     use_container_width=True, height=min(80+35*len(pt2), 600))
+        rd = rate_df.copy(); rd.columns = [clbl(product, m) for m in MONTHS]; rd.index.name = "CASE"
+        st.markdown("<div class='bb-hdr'>IMPLIED RATES (%)</div>", unsafe_allow_html=True)
+        st.dataframe(rd.style.apply(hl_rate, axis=0).format("{:.4f}"),
+                     use_container_width=True, height=min(80+35*len(rd), 500))
+        st.download_button(f"⬇ {product} PRICES CSV", pt2.to_csv(), f"{pk}_{year}.csv", "text/csv")
 
-    with t2d:
-        price_tbl = pd.DataFrame({c["name"]: [zq_res[c["name"]][m] for m in MONTHS]
-                                   for c in cases_zq}, index=MONTHS).T
-        price_tbl.columns = [contract_label("ZQ", m) for m in MONTHS]
-        price_tbl.index.name = "Case"
-        st.dataframe(price_tbl.style.apply(highlight_mm).format("{:.4f}"),
-                     use_container_width=True, height=min(100+35*len(price_tbl), 700))
-        st.download_button("⬇ Download CSV", price_tbl.to_csv(),
-                           f"zq_prices_{year}.csv", "text/csv")
+# ══════════════════════════════════════════════════════
+# MAIN TABS
+# ══════════════════════════════════════════════════════
+TAB_SR1, TAB_ZQ, TAB_SPD, TAB_IPC, TAB_GUIDE = st.tabs([
+    "● SR1  SOFR", "● ZQ  EFFR", "▲ SPREADS & FLIES", "⇄ INTER-PRODUCT", "◉ TRADING GUIDE"
+])
 
-# ═══════════════════════════════════════════════════════════════
-# TAB 3: SPREADS & FLIES
-# ═══════════════════════════════════════════════════════════════
+with TAB_SR1: render_product("sr1", "SR1", sofr_base, sr1_res)
+with TAB_ZQ:  render_product("zq",  "ZQ",  effr_base, zq_res)
+
+# ══════════════════════════════════════════════════════
+# SPREADS & FLIES BUILDER
+# ══════════════════════════════════════════════════════
 with TAB_SPD:
-    st.markdown('<div class="sec">📐 Spread & Fly Builder</div>', unsafe_allow_html=True)
-    st.markdown("""
-    <div class="infobox">
-    Build any 2-leg spread or 3-leg butterfly across SR1 or ZQ contracts.
-    Results are shown across all your scenario cases simultaneously.
-    </div>""", unsafe_allow_html=True)
-
-    sp_col1, sp_col2 = st.columns([1,2])
-
-    with sp_col1:
-        st.markdown("**Configure Legs**")
-        product_sel = st.selectbox("Product", ["SR1","ZQ"], key="sp_prod")
-        leg_type = st.radio("Structure", ["2-Leg Spread","3-Leg Butterfly (1×2×1)","Custom Weightings"],
-                            horizontal=False)
-
-        all_contracts = [contract_label(product_sel, m) for m in MONTHS]
-
-        if leg_type == "2-Leg Spread":
-            l1_mo = st.selectbox("Buy leg (Leg 1)", MONTHS, index=0, key="sp_l1")
-            l2_mo = st.selectbox("Sell leg (Leg 2)", MONTHS, index=1, key="sp_l2")
-            legs = [(l1_mo, +1), (l2_mo, -1)]
-            label = f"{product_sel} {l1_mo}−{l2_mo}'{yr2} Spread"
-
-        elif leg_type == "3-Leg Butterfly (1×2×1)":
-            front_mo = st.selectbox("Front leg",  MONTHS, index=0, key="sp_front")
-            belly_mo = st.selectbox("Belly leg",  MONTHS, index=1, key="sp_belly")
-            back_mo  = st.selectbox("Back leg",   MONTHS, index=2, key="sp_back")
-            legs = [(front_mo, -1), (belly_mo, +2), (back_mo, -1)]
-            label = f"{product_sel} {front_mo}/{belly_mo}/{back_mo}'{yr2} Fly"
-
-        else:  # Custom
-            st.markdown("Enter weight for each month (0 = not included)")
-            legs = []
-            wcols = st.columns(3)
-            for mi, mo in enumerate(MONTHS):
-                with wcols[mi % 3]:
-                    w = st.number_input(f"{product_sel} {mo}", value=0, step=1,
-                                        key=f"cw_{mi}", format="%d")
-                    if w != 0:
-                        legs.append((mo, w))
-            label = f"{product_sel} Custom'{yr2}"
-
-    with sp_col2:
-        st.markdown(f"**{label}**")
-        res_sel = sr1_res if product_sel == "SR1" else zq_res
-        cases_sel = st.session_state.sr1_cases if product_sel == "SR1" else st.session_state.zq_cases
-
-        if not res_sel or not legs:
-            st.info("Configure legs and add cases to see results.")
+    st.markdown("<div class='bb-hdr'>◈ SPREAD & FLY BUILDER</div>", unsafe_allow_html=True)
+    col_cfg, col_res = st.columns([1,2])
+    with col_cfg:
+        prod_sel  = st.selectbox("PRODUCT", ["SR1","ZQ"], key="sp_prod")
+        leg_type  = st.radio("STRUCTURE", ["2-LEG SPREAD","3-LEG BUTTERFLY","CUSTOM WEIGHTS"])
+        res_sel   = sr1_res if prod_sel=="SR1" else zq_res
+        cases_sel = st.session_state.sr1_cases if prod_sel=="SR1" else st.session_state.zq_cases
+        if leg_type == "2-LEG SPREAD":
+            l1 = st.selectbox("BUY LEG",  MONTHS, index=0, key="l1")
+            l2 = st.selectbox("SELL LEG", MONTHS, index=1, key="l2")
+            legs = [(l1,+1),(l2,-1)]; label = f"{prod_sel} {l1}-{l2}'{yr2} SPREAD"
+        elif leg_type == "3-LEG BUTTERFLY":
+            fr = st.selectbox("FRONT", MONTHS, index=0, key="fr")
+            be = st.selectbox("BELLY", MONTHS, index=1, key="be")
+            bk = st.selectbox("BACK",  MONTHS, index=2, key="bk")
+            legs = [(fr,-1),(be,+2),(bk,-1)]; label = f"{prod_sel} {fr}/{be}/{bk}'{yr2} FLY"
         else:
-            spread_vals = {}
-            for case in cases_sel:
-                nm = case["name"]
-                p  = res_sel[nm]
-                val = sum(p[mo] * w for mo, w in legs) * 100  # convert to bp
-                spread_vals[nm] = round(val, 3)
-
-            # Bar chart
-            fig_sp = go.Figure()
-            sorted_cases = sorted(spread_vals.items(), key=lambda x: x[1])
-            names_s = [x[0] for x in sorted_cases]
-            vals_s  = [x[1] for x in sorted_cases]
-            colors_s= [COLORS[cases_sel.index(next(c for c in cases_sel if c["name"]==n)) % len(COLORS)]
-                       for n in names_s]
-            fig_sp.add_trace(go.Bar(
-                x=names_s, y=vals_s, marker_color=colors_s,
-                hovertemplate="<b>%{x}</b><br>%{y:+.3f} bp<extra></extra>",
-            ))
-            fig_sp.update_layout(
-                title=label,
-                xaxis=dict(tickfont=dict(size=11, color="#c9d1d9"), tickangle=-35),
-                yaxis=dict(title="bp", zeroline=True, zerolinecolor="#666",
-                           gridcolor="#1e2530", tickfont=dict(size=11, color="#c9d1d9")),
-                plot_bgcolor="#13171f", paper_bgcolor="#13171f",
-                font=dict(color="#c9d1d9"), height=380,
-                margin=dict(l=60, r=20, t=50, b=100),
-            )
+            legs = []
+            for mi, mo in enumerate(MONTHS):
+                w = st.number_input(f"{prod_sel} {mo}", value=0, step=1, key=f"cw_{mi}", format="%d")
+                if w != 0: legs.append((mo, w))
+            label = f"{prod_sel} CUSTOM'{yr2}"
+    with col_res:
+        if res_sel and legs and cases_sel:
+            sv = {c["name"]: round(sum(res_sel[c["name"]][mo]*w for mo,w in legs if c["name"] in res_sel)*100,3)
+                  for c in cases_sel if c["name"] in res_sel}
+            fig_sp = go.Figure(go.Bar(x=list(sv.keys()), y=list(sv.values()),
+                                      marker_color=[COLORS[i%len(COLORS)] for i in range(len(sv))],
+                                      hovertemplate="<b>%{x}</b><br>%{y:+.3f} bp<extra></extra>"))
+            layout = {**BB_LAYOUT, "title": label, "yaxis_title": "bp",
+                      "height": 320, "margin": dict(l=60,r=20,t=50,b=100)}
+            fig_sp.update_layout(**layout)
+            fig_sp.update_yaxes(zeroline=True, zerolinecolor="#555530")
+            fig_sp.update_xaxes(tickangle=-35)
             st.plotly_chart(fig_sp, use_container_width=True)
+            sv_df = pd.DataFrame.from_dict(sv, orient="index", columns=[f"{label} (bp)"])
+            sv_df.index.name = "CASE"
+            base_v = sv_df.iloc[0,0] if not sv_df.empty else 0
+            sv_df["Δ vs Base (bp)"] = (sv_df.iloc[:,0] - base_v).round(3)
+            st.dataframe(sv_df.style.apply(hl_spread).format("{:+.3f}"), use_container_width=True)
 
-            # Summary table
-            sv_df = pd.DataFrame.from_dict(spread_vals, orient="index", columns=[f"{label} (bp)"])
-            sv_df.index.name = "Case"
-            sv_df["vs Base"] = (sv_df[f"{label} (bp)"] - sv_df[f"{label} (bp)"].iloc[0]).round(3)
-            st.dataframe(
-                sv_df.style.apply(highlight_diff).format("{:+.3f}"),
-                use_container_width=True
-            )
-
-    st.markdown("---")
-    st.markdown('<div class="sec">📊 Full Calendar Spread Matrix</div>', unsafe_allow_html=True)
-    mat_prod = st.selectbox("Product for matrix", ["SR1","ZQ"], key="mat_prod")
+    st.markdown("<hr style='margin:6px 0;'>", unsafe_allow_html=True)
+    st.markdown("<div class='bb-hdr'>FULL MATRIX</div>", unsafe_allow_html=True)
+    mat_prod  = st.selectbox("PRODUCT FOR MATRIX", ["SR1","ZQ"], key="mat_p")
     mat_res   = sr1_res if mat_prod=="SR1" else zq_res
     mat_cases = st.session_state.sr1_cases if mat_prod=="SR1" else st.session_state.zq_cases
-
     if mat_res and mat_cases:
-        sp_df, fly_df, _ = compute_analytics(mat_res, mat_cases)
-        sp_df.columns  = [f"{mat_prod} {c}" for c in sp_df.columns]
-        fly_df.columns = [f"{c}" for c in fly_df.columns]
+        sp2, fly2, _ = compute_analytics(mat_res, mat_cases)
+        sp2.columns = [f"{mat_prod} {c}" for c in sp2.columns]
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown("<div class='bb-hdr'>SPREADS (bp)</div>", unsafe_allow_html=True)
+            st.dataframe(sp2.style.apply(hl_spread, axis=1).format("{:+.3f}"), use_container_width=True)
+        with c2:
+            st.markdown("<div class='bb-hdr'>FLIES (bp)</div>", unsafe_allow_html=True)
+            st.dataframe(fly2.style.apply(hl_fly, axis=1).format("{:+.3f}"), use_container_width=True)
 
-        st.markdown("**Calendar Spreads (bp)** — consecutive month pairs")
-        st.dataframe(sp_df.style.apply(highlight_diff, axis=1).format("{:+.2f}"),
-                     use_container_width=True)
-        st.markdown("**Butterfly Values (bp)** — −Front + 2×Belly − Back")
-        st.dataframe(fly_df.style.apply(highlight_fly, axis=1).format("{:+.2f}"),
-                     use_container_width=True)
-
-# ═══════════════════════════════════════════════════════════════
-# TAB 4: INTER-PRODUCT (SR1 vs ZQ)
-# ═══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════
+# INTER-PRODUCT
+# ══════════════════════════════════════════════════════
 with TAB_IPC:
-    st.markdown('<div class="sec">🔀 Inter-Product: SR1 vs ZQ (SOFR–FF Basis)</div>',
-                unsafe_allow_html=True)
-    st.markdown("""
-    <div class="infobox">
-    <b>SR1 − ZQ basis</b> = SOFR futures price − Fed Funds futures price for the same delivery month.<br>
-    Positive basis = SOFR priced higher than EFFR (normal, SOFR typically slightly above EFFR).<br>
-    Negative basis = unusual, stress signal. Basis tends to widen at quarter/year-end.
-    </div>""", unsafe_allow_html=True)
-
-    ip_col1, ip_col2 = st.columns([1,3])
-    with ip_col1:
-        st.markdown("**Select cases to compare**")
-        sr1_case_names = [c["name"] for c in st.session_state.sr1_cases]
-        zq_case_names  = [c["name"] for c in st.session_state.zq_cases]
-
-        sel_sr1 = st.selectbox("SR1 Case", sr1_case_names, index=0, key="ip_sr1") if sr1_case_names else None
-        sel_zq  = st.selectbox("ZQ Case",  zq_case_names,  index=0, key="ip_zq")  if zq_case_names  else None
-        show_both_lines = st.checkbox("Overlay SR1 and ZQ prices", value=True)
-
-    with ip_col2:
-        if sel_sr1 and sel_zq and sel_sr1 in sr1_res and sel_zq in zq_res:
-            sr1_p = [sr1_res[sel_sr1][m] for m in MONTHS]
-            zq_p  = [zq_res[sel_zq][m]  for m in MONTHS]
-            basis = [round((s-z)*100, 3) for s,z in zip(sr1_p, zq_p)]  # in bp
-            xlabels = MONTHS
-
+    st.markdown("<div class='bb-hdr'>◈ INTER-PRODUCT: SR1 vs ZQ BASIS (SOFR − EFFR)</div>", unsafe_allow_html=True)
+    st.markdown("""<div class='ibox'>BASIS = SR1 PRICE − ZQ PRICE (same month) | NORMAL: +2 to +8bp |
+    WIDENS at QE/YE → BUY BASIS (buy SR1, sell ZQ) | INVERTS in stress → SELL BASIS</div>""", unsafe_allow_html=True)
+    c1, c2 = st.columns([1,3])
+    with c1:
+        sr1_n = [c["name"] for c in st.session_state.sr1_cases]
+        zq_n  = [c["name"] for c in st.session_state.zq_cases]
+        sel_s = st.selectbox("SR1 CASE", sr1_n, index=0, key="ip_s") if sr1_n else None
+        sel_z = st.selectbox("ZQ CASE",  zq_n,  index=0, key="ip_z") if zq_n  else None
+        overlay = st.checkbox("OVERLAY CURVES", value=True)
+    with c2:
+        if sel_s and sel_z and sel_s in sr1_res and sel_z in zq_res:
+            sp = [sr1_res[sel_s][m] for m in MONTHS]
+            zp = [zq_res[sel_z][m]  for m in MONTHS]
+            basis = [round((s-z)*100,3) for s,z in zip(sp,zp)]
             fig_ip = go.Figure()
-            if show_both_lines:
-                fig_ip.add_trace(go.Scatter(
-                    x=[contract_label("SR1", m) for m in MONTHS], y=sr1_p,
-                    name=f"SR1: {sel_sr1}", line=dict(color="#4fc3f7", width=2.5),
-                    marker=dict(size=6), yaxis="y1",
-                    hovertemplate="SR1 %{x}: %{y:.4f}<extra></extra>",
-                ))
-                fig_ip.add_trace(go.Scatter(
-                    x=[contract_label("ZQ", m) for m in MONTHS], y=zq_p,
-                    name=f"ZQ: {sel_zq}", line=dict(color="#ffb74d", width=2.5, dash="dash"),
-                    marker=dict(size=6), yaxis="y1",
-                    hovertemplate="ZQ %{x}: %{y:.4f}<extra></extra>",
-                ))
-            fig_ip.add_trace(go.Bar(
-                x=MONTHS, y=basis,
-                name="Basis (SR1−ZQ, bp)",
-                marker_color=["#81c784" if v>=0 else "#e57373" for v in basis],
-                yaxis="y2",
-                hovertemplate="%{x} Basis: %{y:+.2f} bp<extra></extra>",
-            ))
-            fig_ip.update_layout(
-                title=f"SR1 vs ZQ — {sel_sr1} / {sel_zq}",
-                xaxis=dict(tickfont=dict(size=11, color="#c9d1d9"), tickangle=-30),
-                yaxis=dict(title="Price", gridcolor="#1e2530", tickfont=dict(size=11, color="#c9d1d9")),
-                yaxis2=dict(title="Basis (bp)", overlaying="y", side="right",
-                            zeroline=True, zerolinecolor="#666", showgrid=False,
-                            tickfont=dict(size=11, color="#aaa")),
-                legend=dict(font=dict(size=11), bgcolor="rgba(20,26,36,0.9)"),
-                plot_bgcolor="#13171f", paper_bgcolor="#13171f",
-                font=dict(color="#c9d1d9"), height=430, barmode="overlay",
-                margin=dict(l=65, r=80, t=60, b=80),
-            )
+            if overlay:
+                fig_ip.add_trace(go.Scatter(x=[clbl("SR1",m) for m in MONTHS], y=sp, name=f"SR1: {sel_s}",
+                    line=dict(color="#f0d050",width=2), marker=dict(size=5), yaxis="y1",
+                    hovertemplate="SR1 %{x}: %{y:.4f}<extra></extra>"))
+                fig_ip.add_trace(go.Scatter(x=[clbl("ZQ",m) for m in MONTHS], y=zp, name=f"ZQ:  {sel_z}",
+                    line=dict(color="#4af04a",width=2,dash="dash"), marker=dict(size=5), yaxis="y1",
+                    hovertemplate="ZQ %{x}: %{y:.4f}<extra></extra>"))
+            fig_ip.add_trace(go.Bar(x=MONTHS, y=basis, name="Basis (bp)",
+                marker_color=["#4af04a" if v>=0 else "#f04a4a" for v in basis],
+                yaxis="y2", opacity=0.8, hovertemplate="%{x} BASIS: %{y:+.2f} bp<extra></extra>"))
+            layout = {**BB_LAYOUT, "title": f"SR1 vs ZQ | {sel_s} / {sel_z}", "height": 400,
+                      "barmode": "overlay",
+                      "yaxis2": dict(title="Basis(bp)", overlaying="y", side="right",
+                                     zeroline=True, zerolinecolor="#555530", showgrid=False,
+                                     tickfont=dict(size=10, color="#888860"))}
+            fig_ip.update_layout(**layout)
             st.plotly_chart(fig_ip, use_container_width=True)
+            bdf = pd.DataFrame({"CONTRACT":[clbl("SR1",m) for m in MONTHS],
+                                f"SR1":[f"{v:.4f}" for v in sp],
+                                f"ZQ": [f"{v:.4f}" for v in zp],
+                                "BASIS(bp)":[f"{v:+.2f}" for v in basis]}).set_index("CONTRACT")
+            st.dataframe(bdf, use_container_width=True)
 
-            # Basis table
-            basis_df = pd.DataFrame({
-                "Month": [contract_label("SR1",m) for m in MONTHS],
-                f"SR1 ({sel_sr1})": [f"{v:.4f}" for v in sr1_p],
-                f"ZQ  ({sel_zq})":  [f"{v:.4f}" for v in zq_p],
-                "Basis (bp)":       [f"{v:+.2f}" for v in basis],
-            }).set_index("Month")
-            st.dataframe(basis_df, use_container_width=True)
+    st.markdown("<hr style='margin:6px 0;'>", unsafe_allow_html=True)
+    st.markdown("<div class='bb-hdr'>ALL-CASE BASIS TABLE</div>", unsafe_allow_html=True)
+    bmo = st.selectbox("MONTH", MONTHS, index=8, key="bm")
+    rows_b = [{"SR1 CASE":sc["name"],"ZQ CASE":zc["name"],
+               f"BASIS {bmo} (bp)":round((sr1_res[sc["name"]][bmo]-zq_res[zc["name"]][bmo])*100,3)}
+              for sc in st.session_state.sr1_cases for zc in st.session_state.zq_cases
+              if sc["name"] in sr1_res and zc["name"] in zq_res]
+    if rows_b:
+        bdf2 = pd.DataFrame(rows_b); col = f"BASIS {bmo} (bp)"
+        st.dataframe(bdf2.style.apply(
+            lambda s: ["background:#0a2a0a;color:#4af04a" if v>0 else "background:#2a0a0a;color:#f04a4a" for v in s]
+            if s.name==col else [""]*len(s), axis=0).format({col:"{:+.3f}"}), use_container_width=True)
 
-    st.markdown("---")
-    st.markdown('<div class="sec">All-Case Basis Comparison</div>', unsafe_allow_html=True)
-    basis_mo = st.selectbox("Select month", MONTHS, index=8, key="basis_mo")  # default Sep
-    if st.session_state.sr1_cases and st.session_state.zq_cases:
-        rows = []
-        for sr1_c in st.session_state.sr1_cases:
-            for zq_c in st.session_state.zq_cases:
-                s_nm = sr1_c["name"]; z_nm = zq_c["name"]
-                if s_nm in sr1_res and z_nm in zq_res:
-                    b = round((sr1_res[s_nm][basis_mo] - zq_res[z_nm][basis_mo])*100, 3)
-                    rows.append({"SR1 Case": s_nm, "ZQ Case": z_nm,
-                                 f"Basis {basis_mo} (bp)": b})
-        if rows:
-            bdf = pd.DataFrame(rows)
-            st.dataframe(bdf.style.apply(
-                lambda s: [("background-color:#1a4731;color:#81c784" if v>0
-                            else "background-color:#4a1515;color:#e57373") for v in s]
-                if s.name == f"Basis {basis_mo} (bp)" else [""]*len(s), axis=0
-            ).format({f"Basis {basis_mo} (bp)": "{:+.3f}"}), use_container_width=True)
-
-# ═══════════════════════════════════════════════════════════════
-# TAB 5: TRADING GUIDE
-# ═══════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════
+# TRADING GUIDE
+# ══════════════════════════════════════════════════════
 with TAB_GUIDE:
-    st.markdown('<div class="sec">📚 STIR Trading Guide — SR1, ZQ & Spreads</div>',
-                unsafe_allow_html=True)
-
+    st.markdown("<div class='bb-hdr'>◈ STIR TRADING GUIDE & PRO DASHBOARD SUGGESTIONS</div>", unsafe_allow_html=True)
     g1, g2 = st.columns(2)
-
     with g1:
-        st.markdown("### 🔵 What is SR1?")
         st.markdown("""
-        **SR1** is the CME 1-Month SOFR futures contract.
-        - Price = **100 − average daily SOFR** for the delivery month
-        - Settlement is based on the daily compounded SOFR rate published by the NY Fed
-        - Each contract covers one calendar month (Jan, Feb, … Dec)
-        - **1 bp move = $41.67** per contract (based on $5M notional × 30/360)
-        - SR1 reflects **exact Fed meeting outcomes** because SOFR tracks the Fed's target directly
+### ● SR1 — 1-Month SOFR Futures
+`Price = 100 − avg daily SOFR for delivery month`
+- **DV01 = $41.67/bp** per contract ($5M notional × 30/360 / 12)
+- Tracks Fed target almost exactly (SOFR ≈ FF upper bound −1 to −2bp)
+- Each contract = one calendar month Jan–Dec
+- First contract fully at new rate = month containing the **effective date** (day after meeting)
 
-        **Key SR1 price relationships:**
-        - SR1 Jan trades flat if no cut is expected before Jan 28 meeting
-        - SR1 Mar prices in the Mar 18 meeting outcome
-        - Months *after* the last meeting of the year are "terminal rate" contracts
-        """)
-
-        st.markdown("### 🟠 What is ZQ?")
-        st.markdown("""
-        **ZQ** is the CBOT 30-Day Fed Funds futures contract.
-        - Price = **100 − average daily EFFR** (Effective Fed Funds Rate)
-        - EFFR is published daily by the NY Fed; it trades within the FOMC target range
-        - Typically **5–8bp below** the upper bound of the FF target range
-        - **1 bp move = $41.67** per contract
-        - ZQ is the *older* and more liquid product; SR1 has gained ground since SOFR transition
-
-        **SOFR vs EFFR:**
-        - Pre-2022: LIBOR → SOFR basis was important
-        - Post-2022: SOFR ≈ EFFR ≈ FF target upper bound −5bp to −8bp
-        - At QE/YE: EFFR can move more than SOFR (window dressing effects)
+### ● ZQ — 30-Day Fed Funds Futures
+`Price = 100 − avg daily EFFR for delivery month`
+- **DV01 = $41.67/bp** (same as SR1)
+- EFFR historically **5–8bp below** FF upper bound → lower than SOFR
+- More sensitive to **year-end** window dressing (ZQ Dec richens)
+- Older/more liquid; widely used by macro funds and for hedging FF risk
         """)
 
     with g2:
-        st.markdown("### 📐 Calendar Spreads")
         st.markdown("""
-        **Definition:** Spread = Price(back month) − Price(front month)
+### ▲ Calendar Spreads (FRONT − BACK)
+`Jun/Jul spread = SR1_Jun − SR1_Jul`
 
-        A SR1 **Jun/Jul spread** = SR1 Jul price − SR1 Jun price
+| Value | Meaning |
+|---|---|
+| **−25 bp** | One 25bp cut fully priced Jun→Jul |
+| **−12.5 bp** | 50% prob of a 25bp cut |
+| **0 bp** | No cut priced (flat curve) |
+| **+25 bp** | Hike priced |
 
-        | Spread value | Interpretation |
-        |---|---|
-        | **+25 bp** | Market expects one 25bp cut between Jun and Jul meetings |
-        | **0 bp** | No cut expected; rates flat between the two months |
-        | **−25 bp** | Market prices a hike between the two months |
-        | **+12.5 bp** | 50% probability of a 25bp cut |
+**Prob(cut between two meetings) = |spread| / 25bp**
 
-        **How to trade:**
-        - **Buy the spread** (buy back, sell front) → you profit if cuts get priced in
-        - **Sell the spread** → you profit if cuts get priced out / hikes priced in
-        - Spreads around *active meeting months* are the most volatile and interesting
-        """)
+### 🦋 Butterflies
+`Fly = −Front + 2×Belly − Back`
 
-        st.markdown("### 🦋 Butterflies")
-        st.markdown("""
-        **Definition:** Fly = −Front + 2×Belly − Back (in price terms, expressed in bp)
+| Value | Trade |
+|---|---|
+| **Positive** | Belly rich vs wings → **SELL the fly** |
+| **Negative** | Belly cheap vs wings → **BUY the fly** |
 
-        A SR1 **May/Jun/Jul fly** = −SR1_May + 2×SR1_Jun − SR1_Jul
-
-        | Fly value | Interpretation |
-        |---|---|
-        | **+ve** | Belly is *cheap* — more cuts priced between belly meetings |
-        | **−ve** | Belly is *rich* — fewer cuts in belly vs wings |
-        | **Near zero** | Curve is linear; cuts spread evenly |
-
-        **How to trade:**
-        - **Buy the fly** → profit if belly richens (even more cuts priced there)
-        - **Sell the fly** → profit if belly cheapens vs wings
-        - Flies are low-carry trades but high-information — great for expressing *when* not just *how many* cuts
-        """)
-
-    st.markdown("---")
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown("### 🔀 Inter-Product (SR1 vs ZQ)")
-        st.markdown("""
-        **Basis = SR1 price − ZQ price** for the same month
-
-        - Normally **+2 to +8bp** (SOFR slightly above EFFR on average)
-        - **Widens at quarter-end / year-end** → buy basis (buy SR1, sell ZQ) going into QE
-        - **Narrows / inverts** in stress → sell basis
-        - Inter-product spreads are heavily affected by Fed balance sheet policy (RRP, reserve scarcity)
-
-        **Typical inter-product trade:**
-        > If you think year-end pressure will push EFFR lower relative to SOFR:
-        > Buy ZQ Dec, Sell SR1 Dec (sell the basis)
-        """)
-
-    with c2:
-        st.markdown("### 🛠 Using This Tool for Real Trading")
-        st.markdown("""
-        **Scenario analysis workflow:**
-        1. Set your **base case** (market-implied path from broker screens / futures prices)
-        2. Add **bull/bear scenarios** reflecting your macro view
-        3. Compare **December prices** across scenarios = your P&L distribution
-        4. Use **spreads tab** to find which months have the most disagreement between scenarios
-        5. That disagreement point is your highest-conviction trade
-
-        **Step-by-step example:**
-        > Market prices 2 cuts in 2026 (Jun + Sep). You think there will be 4 cuts.
-        > 1. Set Base = "2 Cuts Jun+Sep", add "4 Cuts Mar+Jun+Sep+Dec"
-        > 2. Look at SR1 calendar spreads — biggest difference is in Mar/Apr spread
-        > 3. That spread is your expression: **buy SR1 Apr, sell SR1 Mar** (buy the Mar meeting cut)
-        > 4. Size per bp of conviction using the Analytics tab
-
-        **Risk management:**
-        - SR1/ZQ spreads have very tight bid/offer (0.25–0.5bp for liquids)
-        - Flies are wider but have lower delta risk
-        - Always check carry: a steep spread has positive carry if held, flat spread has zero carry
+Express *when* cuts happen (not just how many) using flies.
         """)
 
     st.markdown("---")
     st.markdown("""
-    <div class="tip">
-    <b>💡 Pro tip:</b> The most efficient way to express a view on a specific FOMC meeting
-    is via the <b>two contracts that straddle it</b>. For example, to trade the Sep 16 meeting,
-    use SR1 Sep (which includes Sep 16) vs SR1 Aug (which doesn't).
-    The Sep/Oct spread captures the Oct 28 meeting, not Sep. Map meetings to contract months carefully.
-    </div>""", unsafe_allow_html=True)
+### 🔴 PRO TRADER RECOMMENDATIONS FOR THIS DASHBOARD
 
-    st.markdown("""
-    <div class="warn">
-    <b>⚠️ Meeting-to-contract mapping for 2026:</b><br>
-    Jan 28 → prices into SR1 Jan (Jan 28 effective date falls in Jan) → but effective date is Jan 29, so SR1 Feb is first full contract after Jan meeting<br>
-    Mar 18 → SR1 Apr is first post-meeting contract | Jun 17 → SR1 Jul | Jul 29 → SR1 Aug | Sep 16 → SR1 Oct | Oct 28 → SR1 Nov | Dec 9 → SR1 Jan'27<br>
-    <b>Rule:</b> the rate change takes effect the day AFTER the meeting. The first contract fully priced at the new rate = the contract for the month containing the effective date.
-    </div>""", unsafe_allow_html=True)
+**① ADD CUT PROBABILITY TABLE** (highest priority)
+Convert every spread to implied probability: `Prob = |spread_bp| / 25`.
+This is what every STIR trader looks at first — it's more intuitive than raw prices.
 
-st.markdown("---")
-st.caption(
-    f"STIR Dashboard — SR1 (SOFR {sofr_base*100:.2f}%) · ZQ (EFFR {effr_base*100:.2f}%) · "
-    f"ME {sofr_me*10000:.1f}bp · YE(ZQ) {effr_ye*10000:.1f}bp · {year}"
-)
+**② ADD P&L SCENARIO MATRIX**
+Given a position you enter (e.g. *long 100 SR1 Sep, short 100 SR1 Aug*), auto-calculate
+P&L in bp and USD across all your cases. This makes the tool directly usable for risk management.
+
+**③ ADD MARKET PRICE INPUT**
+Enter current CME screen prices for each contract. The dashboard then shows
+`Your Scenario − Market Price` = your edge / dislocation per month.
+This is the core signal for finding trades.
+
+**④ CARRY TABLE**
+For each spread, show daily carry in bp/day. A long Sep/Oct spread earns carry
+if Sep > Oct (inverted curve). Critical for sizing and hold-time decisions.
+
+**⑤ MEETING IMPACT BREAKDOWN**
+Show what fraction (in bp) of each contract's price comes from each meeting.
+e.g. SR1 Sep: "3.2bp from Jul 29 meeting (partial month), 21.8bp from Sep 16 meeting".
+
+**⑥ QUICK TRADE TICKET**
+After building your scenario, generate:
+*"VIEW: 3 cuts (Jun+Sep+Dec) vs MARKET: 2 cuts → TRADE: BUY SR1 Dec, SELL SR1 Nov @ -25bp.
+Target: -50bp. Stop: -12.5bp. DV01: $41.67/bp/lot"*
+    """)
+
+    st.markdown("""<div class='warn'>
+MEETING → CONTRACT MAP 2026 (EFFECTIVE DATE = DAY AFTER MEETING)<br>
+Jan 28 → eff Jan 29 (partial Jan, full Feb+) | Mar 18 → eff Mar 19 (partial Mar, full Apr+)<br>
+Apr 29 → eff Apr 30 (partial Apr, full May+) | Jun 17 → eff Jun 18 (partial Jun, full Jul+)<br>
+Jul 29 → eff Jul 30 (partial Jul, full Aug+) | Sep 16 → eff Sep 17 (partial Sep, full Oct+)<br>
+Oct 28 → eff Oct 29 (partial Oct, full Nov+) | Dec 9  → eff Dec 10 (partial Dec, full Jan27+)<br>
+RULE: contract spanning the meeting date prices a PARTIAL cut weighted by days-after/days-in-month
+</div>""", unsafe_allow_html=True)
+
+st.markdown(
+    f"<div style='font-size:10px;color:#444430;font-family:Roboto Mono,monospace;margin-top:6px;'>"
+    f"STIR TERMINAL v2.1 | SR1 SOFR {sofr_base*100:.2f}% | ZQ EFFR {effr_base*100:.2f}% | "
+    f"ME {sofr_me*10000:.1f}bp | YE(ZQ) {effr_ye*10000:.1f}bp | {year} | SPREADS: FRONT-BACK CONVENTION"
+    f"</div>", unsafe_allow_html=True)
